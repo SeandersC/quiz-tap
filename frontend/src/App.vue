@@ -25,9 +25,10 @@ const progressPercent = computed(() => {
 });
 const summaryText = computed(() => {
   const formattedDate = new Intl.DateTimeFormat('en-US', {
+    timeZone,
     month: 'long',
     day: 'numeric'
-  }).format(new Date(today));
+  }).format(new Date());
 
   const lines = dailyQuestions.value.map((question, index) => {
     const scoreLine = question.score !== undefined && question.score !== null
@@ -36,7 +37,7 @@ const summaryText = computed(() => {
     return `${index + 1}. ${scoreLine}`;
   });
 
-  return [`quiz-tap ${formattedDate}`, ...lines, `Final score: ${totalScore.value}`].join('\n');
+  return [`https://quiz-tap.com — ${formattedDate}`, ...lines, `Final score: ${totalScore.value}`].join('\n');
 });
 
 const displaySummary = computed(() => {

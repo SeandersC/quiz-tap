@@ -9,6 +9,13 @@ const today = () => getQuizDayForTimeZone(new Date(), 'America/Chicago');
 app.use(cors());
 app.use(express.json());
 
+app.get('/', (_req, res) => {
+  res.json({
+    status: 'ok',
+    message: 'Quiz Tap backend is running. Use /api/health, /api/daily-quiz, or /api/submit-answer.'
+  });
+});
+
 app.get('/api/health', (_req, res) => {
   res.json({ status: 'ok', message: 'Node backend is running' });
 });

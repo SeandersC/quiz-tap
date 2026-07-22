@@ -1,0 +1,10 @@
+services:
+  - type: web
+    name: quiz-tap-backend
+    env: node
+    plan: free
+    rootDir: .
+    buildCommand: npm install
+    startCommand: npm start
+    healthCheckPath: /api/health
+    autoDeploy: true
