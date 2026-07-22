@@ -1,12 +1,12 @@
 <script setup>
-import { computed, onMounted, ref } from 'vue';
+import { computed, ref } from 'vue';
 
 const apiBase = import.meta.env.VITE_API_BASE || (import.meta.env.DEV ? 'http://localhost:3001' : '');
 const QUESTION_TIME_LIMIT = 60;
 const dailyQuestions = ref([]);
 const currentIndex = ref(0);
 const selectedAnswer = ref('');
-const feedback = ref('Loading today’s trivia...');
+const feedback = ref('Press Begin Challenge to start the timed round.');
 const copyStatus = ref('');
 const totalScore = ref(0);
 const completed = ref(false);
@@ -239,7 +239,12 @@ async function fetchDailyQuestions() {
   }
 }
 
-function beginChallenge() {
+async function beginChallenge() {
+  if (!dailyQuestions.value.length) {
+    feedback.value = 'Loading today’s questions...';
+    await fetchDailyQuestions();
+  }
+
   if (!dailyQuestions.value.length) {
     feedback.value = 'Questions are still loading. Please try again in a moment.';
     return;
@@ -300,6 +305,7 @@ async function submitAnswer() {
   const earnedScore = result.score;
   currentQuestion.value.score = earnedScore;
   currentQuestion.value.solved = true;
+  currentQuestion.value.correctAnswer = result.correctAnswer;
   totalScore.value += earnedScore;
   showAnswerResult.value = true;
   clearQuestionTimer();
@@ -335,7 +341,6 @@ async function copySummary() {
   }
 }
 
-onMounted(fetchDailyQuestions);
 </script>
 
 <template>
@@ -380,7 +385,7 @@ onMounted(fetchDailyQuestions);
         </div>
       </div>
 
-      <div v-else-if="!challengeStarted && dailyQuestions.length" class="status intro">
+      <div v-else-if="!challengeStarted && !completed" class="status intro">
         <p class="intro-copy">You’ll get one trivia question at a time. Each question is worth 200 points, and both answer quality and speed affect your score.</p>
         <button class="submit" @click="beginChallenge">Begin Challenge</button>
       </div>
