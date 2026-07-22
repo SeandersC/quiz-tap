@@ -1,5 +1,5 @@
 <script setup>
-import { computed, ref } from 'vue';
+import { computed, onMounted, ref } from 'vue';
 
 const apiBase = import.meta.env.VITE_API_BASE || (import.meta.env.DEV ? 'http://localhost:3001' : '');
 const QUESTION_TIME_LIMIT = 60;
@@ -340,6 +340,19 @@ async function copySummary() {
     copyStatus.value = 'Copy failed in this browser. Please try again.';
   }
 }
+
+onMounted(() => {
+  const cachedState = loadCachedState();
+  const hasStoredProgress = Boolean(
+    cachedState &&
+    cachedState.date === today &&
+    cachedState.questionSetVersion === questionSetVersion
+  );
+
+  if (hasStoredProgress) {
+    fetchDailyQuestions();
+  }
+});
 
 </script>
 
