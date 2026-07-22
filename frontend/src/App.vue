@@ -21,21 +21,27 @@ const today = new Intl.DateTimeFormat('en-CA', {
   month: '2-digit',
   day: '2-digit'
 }).format(new Date()).replace(/\//g, '-');
+const displayDate = new Intl.DateTimeFormat('en-US', {
+  timeZone,
+  month: 'long',
+  day: 'numeric',
+  year: 'numeric'
+}).format(new Date());
 const stateKey = 'quiztap-trivia-state';
 let timerHandle = null;
 let advanceDelayHandle = null;
 
 const currentQuestion = computed(() => dailyQuestions.value[currentIndex.value] ?? null);
 const progressPercent = computed(() => {
-  const answered = dailyQuestions.value.filter((question) => question.solved).length;
-  return Math.round((answered / dailyQuestions.value.length) * 100 || 0);
+  return Math.max(0, Math.min(100, Math.round((totalScore.value / 1000) * 100)));
 });
 const timerLabel = computed(() => `${Math.max(timerSeconds.value, 0)}s`);
 const summaryText = computed(() => {
   const formattedDate = new Intl.DateTimeFormat('en-US', {
     timeZone,
     month: 'long',
-    day: 'numeric'
+    day: 'numeric',
+    year: 'numeric'
   }).format(new Date());
 
   const lines = dailyQuestions.value.map((question, index) => {
@@ -339,7 +345,7 @@ onMounted(fetchDailyQuestions);
       <h1>Quiz Tap</h1>
 
       <div class="meta">
-        <span>Day: {{ today }}</span>
+        <span>{{ displayDate }}</span>
         <span>Score: {{ totalScore }} / 1000</span>
       </div>
 
@@ -364,7 +370,7 @@ onMounted(fetchDailyQuestions);
         <div class="summary-box">
           <div class="summary-header">
             <strong>Score summary</strong>
-            <span>{{ today }}</span>
+            <span>{{ displayDate }}</span>
           </div>
           <div class="score-board">
             <pre>{{ displaySummary.join('\n') }}</pre>
@@ -457,9 +463,11 @@ h1 {
 .meta {
   display: flex;
   justify-content: space-between;
-  gap: 12px;
+  align-items: center;
+  gap: 10px;
   margin-bottom: 12px;
   font-weight: 700;
+  flex-wrap: wrap;
 }
 
 .progress {
@@ -473,6 +481,7 @@ h1 {
 .progress-bar {
   height: 100%;
   background: linear-gradient(90deg, #2563eb, #8b5cf6);
+  transition: width 0.35s ease-in-out;
 }
 
 .question-shell,
