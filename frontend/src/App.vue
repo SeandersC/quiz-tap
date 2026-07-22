@@ -350,6 +350,17 @@ onMounted(() => {
   );
 
   if (hasStoredProgress) {
+    if (Array.isArray(cachedState.questions)) {
+      dailyQuestions.value = cachedState.questions.map((question) => ({
+        id: question.id,
+        attempts: question.attempts ?? 0,
+        solved: question.solved ?? false,
+        score: question.score ?? 0,
+        wrongAnswers: Array.isArray(question.wrongAnswers) ? question.wrongAnswers : []
+      }));
+    }
+
+    restoreState(cachedState);
     fetchDailyQuestions();
   }
 });
