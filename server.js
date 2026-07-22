@@ -21,14 +21,12 @@ app.get('/api/health', (_req, res) => {
 });
 
 app.get('/api/daily-quiz', (_req, res) => {
-    console.log('HERE');
   const day = today();
   const questions = buildDailyQuestionSet(day).map((question) => ({
     id: question.id,
     difficulty: question.difficulty,
     prompt: question.prompt,
-    options: question.options,
-    correctAnswer: question.correctAnswer
+    options: question.options
   }));
 
   res.json({ day, questions });
@@ -51,8 +49,8 @@ app.post('/api/submit-answer', (req, res) => {
 
   return res.json({
     correct: true,
-    message: 'Correct answer!',
-    score: calculateQuestionScore(attempts, elapsedSeconds)
+    score: calculateQuestionScore(attempts, elapsedSeconds),
+    correctAnswer: question.correctAnswer
   });
 });
 

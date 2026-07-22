@@ -44,3 +44,17 @@ test('calculateQuestionScore combines answer worth and time worth', () => {
   assert.equal(calculateQuestionScore(4, 0), 125);
   assert.equal(calculateQuestionScore(5, 60), 0);
 });
+
+test('buildDailyQuestionSet randomizes option placement without forcing the answer off the first slot', () => {
+  const questions = [
+    ...buildDailyQuestionSet('2026-07-22'),
+    ...buildDailyQuestionSet('2026-07-23'),
+    ...buildDailyQuestionSet('2026-07-24')
+  ];
+
+  const firstPositionPlacements = questions.filter((question) => question.options.indexOf(question.correctAnswer) === 0);
+  const otherPlacements = questions.filter((question) => question.options.indexOf(question.correctAnswer) !== 0);
+
+  assert.ok(firstPositionPlacements.length > 0);
+  assert.ok(otherPlacements.length > 0);
+});

@@ -25,6 +25,35 @@ export function getQuizDayForTimeZone(date = new Date(), timeZone = 'America/Chi
   return [year, month, day].join('-');
 }
 
+function shuffleOptions(question, seedInput) {
+  const options = [...question.options];
+  const answerValue = question.correctAnswer;
+  const answerIndex = options.findIndex((option) => option === answerValue);
+
+  if (answerIndex === -1) {
+    return question;
+  }
+
+  let shuffleSeed = hashString(seedInput);
+  for (let i = options.length - 1; i > 0; i -= 1) {
+    shuffleSeed = (shuffleSeed * 31 + 17) % 1000003;
+    const j = shuffleSeed % (i + 1);
+    [options[i], options[j]] = [options[j], options[i]];
+  }
+
+  const desiredIndex = Math.abs(shuffleSeed) % options.length;
+  const currentAnswerIndex = options.findIndex((option) => option === answerValue);
+
+  if (currentAnswerIndex !== desiredIndex) {
+    [options[currentAnswerIndex], options[desiredIndex]] = [options[desiredIndex], options[currentAnswerIndex]];
+  }
+
+  return {
+    ...question,
+    options
+  };
+}
+
 export function buildDailyQuestionSet(dateString) {
   const seed = hashString(dateString);
   const questions = [...QUESTION_POOL];
@@ -36,7 +65,9 @@ export function buildDailyQuestionSet(dateString) {
     [questions[i], questions[j]] = [questions[j], questions[i]];
   }
 
-  return questions.slice(0, 5);
+  return questions.slice(0, 5).map((question, index) => {
+    return shuffleOptions(question, `${dateString}-${question.id}-${index}`);
+  });
 }
 
 export function calculateAttemptScore(attempts) {
