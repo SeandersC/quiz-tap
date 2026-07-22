@@ -2,13 +2,18 @@
 import { computed, onMounted, ref } from 'vue';
 
 const apiBase = import.meta.env.VITE_API_BASE || (import.meta.env.DEV ? 'http://localhost:3001' : '');
+const QUESTION_TIME_LIMIT = 60;
 const dailyQuestions = ref([]);
 const currentIndex = ref(0);
 const selectedAnswer = ref('');
 const feedback = ref('Loading today’s trivia...');
+const copyStatus = ref('');
 const totalScore = ref(0);
 const completed = ref(false);
-const questionSetVersion = 2;
+const challengeStarted = ref(false);
+const timerSeconds = ref(QUESTION_TIME_LIMIT);
+const showAnswerResult = ref(false);
+const questionSetVersion = 3;
 const timeZone = 'America/Chicago';
 const today = new Intl.DateTimeFormat('en-CA', {
   timeZone,
@@ -17,12 +22,15 @@ const today = new Intl.DateTimeFormat('en-CA', {
   day: '2-digit'
 }).format(new Date()).replace(/\//g, '-');
 const stateKey = 'quiztap-trivia-state';
+let timerHandle = null;
+let advanceDelayHandle = null;
 
 const currentQuestion = computed(() => dailyQuestions.value[currentIndex.value] ?? null);
 const progressPercent = computed(() => {
   const answered = dailyQuestions.value.filter((question) => question.solved).length;
   return Math.round((answered / dailyQuestions.value.length) * 100 || 0);
 });
+const timerLabel = computed(() => `${Math.max(timerSeconds.value, 0)}s`);
 const summaryText = computed(() => {
   const formattedDate = new Intl.DateTimeFormat('en-US', {
     timeZone,
@@ -57,9 +65,57 @@ function isWrongAnswer(option) {
   );
 }
 
-function calculateQuestionScore(attempts) {
-  const normalizedAttempts = Math.min(Math.max(attempts, 1), 5);
-  return Math.max(200 - (normalizedAttempts - 1) * 50, 0);
+function clearQuestionTimer() {
+  if (timerHandle) {
+    window.clearInterval(timerHandle);
+    timerHandle = null;
+  }
+}
+
+function clearAdvanceDelay() {
+  if (advanceDelayHandle) {
+    window.clearTimeout(advanceDelayHandle);
+    advanceDelayHandle = null;
+  }
+}
+
+function handleQuestionTimeout() {
+  clearQuestionTimer();
+
+  if (!currentQuestion.value) {
+    return;
+  }
+
+  currentQuestion.value.attempts = (currentQuestion.value.attempts ?? 0) + 1;
+  currentQuestion.value.score = 0;
+  currentQuestion.value.solved = true;
+  selectedAnswer.value = '';
+  showAnswerResult.value = false;
+
+  if (currentIndex.value < dailyQuestions.value.length - 1) {
+    const nextIndex = currentIndex.value + 1;
+    currentIndex.value = nextIndex;
+    feedback.value = `Time's up — 0 points recorded. Question ${nextIndex + 1} of ${dailyQuestions.value.length}.`;
+    resetQuestionTimer();
+  } else {
+    completed.value = true;
+    challengeStarted.value = false;
+    feedback.value = `Time's up — final score: ${totalScore.value} / 1000.`;
+  }
+
+  persistState();
+}
+
+function resetQuestionTimer() {
+  clearQuestionTimer();
+  timerSeconds.value = QUESTION_TIME_LIMIT;
+  timerHandle = window.setInterval(() => {
+    timerSeconds.value = Math.max(0, timerSeconds.value - 1);
+
+    if (timerSeconds.value === 0) {
+      handleQuestionTimeout();
+    }
+  }, 1000);
 }
 
 function loadCachedState() {
@@ -85,6 +141,9 @@ function persistState() {
     questionSetVersion,
     date: today,
     currentIndex: currentIndex.value,
+    challengeStarted: challengeStarted.value,
+    timerSeconds: timerSeconds.value,
+    showAnswerResult: showAnswerResult.value,
     completed: completed.value,
     totalScore: totalScore.value,
     questions: dailyQuestions.value.map((question) => ({
@@ -113,6 +172,9 @@ function restoreState(savedState) {
   }
 
   currentIndex.value = savedState.currentIndex ?? 0;
+  challengeStarted.value = savedState.challengeStarted ?? false;
+  timerSeconds.value = savedState.timerSeconds ?? QUESTION_TIME_LIMIT;
+  showAnswerResult.value = savedState.showAnswerResult ?? false;
   completed.value = savedState.completed ?? false;
   totalScore.value = savedState.totalScore ?? 0;
 
@@ -133,8 +195,11 @@ function restoreState(savedState) {
 
   if (completed.value) {
     feedback.value = 'You completed today’s trivia challenge. Come back tomorrow for a fresh board.';
+  } else if (challengeStarted.value) {
+    feedback.value = `Question ${currentIndex.value + 1} of ${dailyQuestions.value.length}. Keep going.`;
+    resetQuestionTimer();
   } else {
-    feedback.value = 'Welcome back — you can continue where you left off.';
+    feedback.value = 'Press Begin Challenge to start the timed round.';
   }
 }
 
@@ -159,8 +224,8 @@ async function fetchDailyQuestions() {
 
     if (!dailyQuestions.value.length) {
       feedback.value = 'No questions were available for today.';
-    } else if (!completed.value && currentQuestion.value) {
-      feedback.value = `Question ${currentIndex.value + 1} of ${dailyQuestions.value.length}. Pick the best answer.`;
+    } else if (!challengeStarted.value && !completed.value) {
+      feedback.value = 'Press Begin Challenge to start the timed round.';
     }
   } catch (error) {
     console.error(error);
@@ -168,20 +233,44 @@ async function fetchDailyQuestions() {
   }
 }
 
+function beginChallenge() {
+  if (!dailyQuestions.value.length) {
+    feedback.value = 'Questions are still loading. Please try again in a moment.';
+    return;
+  }
+
+  clearAdvanceDelay();
+  showAnswerResult.value = false;
+  challengeStarted.value = true;
+  completed.value = false;
+  currentIndex.value = 0;
+  selectedAnswer.value = '';
+  feedback.value = `Question 1 of ${dailyQuestions.value.length}. Pick the best answer before the timer expires.`;
+  resetQuestionTimer();
+  persistState();
+}
+
 async function submitAnswer() {
+  if (!challengeStarted.value) {
+    feedback.value = 'Press Begin Challenge before answering the first question.';
+    return;
+  }
+
   if (!currentQuestion.value || !selectedAnswer.value) {
     feedback.value = 'Choose one of the answers before submitting.';
     return;
   }
 
   const attempts = (currentQuestion.value.attempts ?? 0) + 1;
+  const elapsedSeconds = QUESTION_TIME_LIMIT - timerSeconds.value;
   const response = await fetch(`${apiBase}/api/submit-answer`, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify({
       questionId: currentQuestion.value.id,
       answer: selectedAnswer.value,
-      attempts
+      attempts,
+      elapsedSeconds
     })
   });
 
@@ -206,15 +295,27 @@ async function submitAnswer() {
   currentQuestion.value.score = earnedScore;
   currentQuestion.value.solved = true;
   totalScore.value += earnedScore;
-  selectedAnswer.value = '';
+  showAnswerResult.value = true;
+  clearQuestionTimer();
+  feedback.value = `Correct! You earned ${earnedScore} points.`;
 
-  if (currentIndex.value < dailyQuestions.value.length - 1) {
-    currentIndex.value += 1;
-    feedback.value = `Correct! You earned ${earnedScore} points. Next question ready.`;
-  } else {
-    completed.value = true;
-    feedback.value = `Correct! Final score: ${totalScore.value} / 1000.`;
-  }
+  advanceDelayHandle = window.setTimeout(() => {
+    if (currentIndex.value < dailyQuestions.value.length - 1) {
+      currentIndex.value += 1;
+      selectedAnswer.value = '';
+      showAnswerResult.value = false;
+      feedback.value = `Question ${currentIndex.value + 1} of ${dailyQuestions.value.length}. Keep going.`;
+      resetQuestionTimer();
+    } else {
+      completed.value = true;
+      challengeStarted.value = false;
+      selectedAnswer.value = '';
+      showAnswerResult.value = false;
+      feedback.value = `Correct! Final score: ${totalScore.value} / 1000.`;
+    }
+
+    persistState();
+  }, 1000);
 
   persistState();
 }
@@ -222,9 +323,9 @@ async function submitAnswer() {
 async function copySummary() {
   try {
     await navigator.clipboard.writeText(summaryText.value);
-    feedback.value = 'Score summary copied to clipboard.';
+    copyStatus.value = 'Score copied to clipboard';
   } catch {
-    feedback.value = 'Copy failed in this browser. Please try again.';
+    copyStatus.value = 'Copy failed in this browser. Please try again.';
   }
 }
 
@@ -269,11 +370,20 @@ onMounted(fetchDailyQuestions);
             <pre>{{ displaySummary.join('\n') }}</pre>
           </div>
           <button class="submit copy-button" @click="copySummary">Copy score</button>
+          <p v-if="copyStatus" class="copy-status">{{ copyStatus }}</p>
         </div>
       </div>
 
+      <div v-else-if="!challengeStarted && dailyQuestions.length" class="status intro">
+        <p class="intro-copy">You’ll get one trivia question at a time. Each question is worth 200 points, and both answer quality and speed affect your score.</p>
+        <button class="submit" @click="beginChallenge">Begin Challenge</button>
+      </div>
+
       <div v-else-if="currentQuestion" class="question-shell">
-        <p class="question-number">Question {{ currentIndex + 1 }} of {{ dailyQuestions.length }}</p>
+        <div class="question-header">
+          <p class="question-number">Question {{ currentIndex + 1 }} of {{ dailyQuestions.length }}</p>
+          <span class="timer-pill">Time left: {{ timerLabel }}</span>
+        </div>
         <h2>{{ currentQuestion.prompt }}</h2>
 
         <div class="options">
@@ -283,7 +393,8 @@ onMounted(fetchDailyQuestions);
             class="option"
             :class="{
               wrong: isWrongAnswer(option),
-              selected: selectedAnswer === option
+              selected: selectedAnswer === option,
+              correct: showAnswerResult && option === currentQuestion.correctAnswer
             }"
           >
             <input
@@ -291,13 +402,13 @@ onMounted(fetchDailyQuestions);
               type="radio"
               :value="option"
               name="quiz-option"
-              :disabled="isWrongAnswer(option)"
+              :disabled="isWrongAnswer(option) || showAnswerResult"
             />
             <span>{{ option }}</span>
           </label>
         </div>
 
-        <button class="submit" @click="submitAnswer">Submit answer</button>
+        <button class="submit" :disabled="!selectedAnswer" @click="submitAnswer">Submit answer</button>
       </div>
 
       <div v-else class="status">
@@ -369,10 +480,36 @@ h1 {
   margin-top: 16px;
 }
 
+.question-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 12px;
+  margin-bottom: 12px;
+}
+
 .question-number {
   color: #64748b;
   font-weight: 700;
-  margin-bottom: 12px;
+  margin: 0;
+}
+
+.timer-pill {
+  background: #dbeafe;
+  color: #1d4ed8;
+  font-weight: 700;
+  border-radius: 999px;
+  padding: 6px 10px;
+}
+
+.intro {
+  text-align: center;
+}
+
+.intro-copy {
+  margin: 0 0 16px;
+  color: #475569;
+  line-height: 1.55;
 }
 
 h2 {
@@ -408,6 +545,12 @@ h2 {
   box-shadow: 0 0 0 3px rgba(37, 99, 235, 0.12);
 }
 
+.option.correct {
+  background: #dcfce7;
+  border-color: #16a34a;
+  box-shadow: 0 0 0 3px rgba(22, 163, 74, 0.16);
+}
+
 .option input {
   accent-color: #2563eb;
 }
@@ -427,6 +570,11 @@ h2 {
   font-weight: 700;
   cursor: pointer;
   width: 100%;
+}
+
+.submit:disabled {
+  cursor: not-allowed;
+  opacity: 0.55;
 }
 
 .done {
@@ -516,5 +664,12 @@ h2 {
 .copy-button {
   margin-top: 0;
   width: 100%;
+}
+
+.copy-status {
+  margin: 12px 0 0;
+  text-align: center;
+  color: #1d4ed8;
+  font-weight: 700;
 }
 </style>

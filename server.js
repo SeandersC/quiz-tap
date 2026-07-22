@@ -27,14 +27,15 @@ app.get('/api/daily-quiz', (_req, res) => {
     id: question.id,
     difficulty: question.difficulty,
     prompt: question.prompt,
-    options: question.options
+    options: question.options,
+    correctAnswer: question.correctAnswer
   }));
 
   res.json({ day, questions });
 });
 
 app.post('/api/submit-answer', (req, res) => {
-  const { questionId, answer, attempts } = req.body ?? {};
+  const { questionId, answer, attempts, elapsedSeconds = 0 } = req.body ?? {};
   const day = today();
   const question = buildDailyQuestionSet(day).find((entry) => entry.id === questionId);
 
@@ -51,7 +52,7 @@ app.post('/api/submit-answer', (req, res) => {
   return res.json({
     correct: true,
     message: 'Correct answer!',
-    score: calculateQuestionScore(attempts)
+    score: calculateQuestionScore(attempts, elapsedSeconds)
   });
 });
 

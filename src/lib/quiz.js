@@ -39,8 +39,19 @@ export function buildDailyQuestionSet(dateString) {
   return questions.slice(0, 5);
 }
 
-export function calculateQuestionScore(attempts) {
+export function calculateAttemptScore(attempts) {
   const normalizedAttempts = Math.min(Math.max(attempts, 1), 5);
-  const raw = 200 - (normalizedAttempts - 1) * 50;
-  return Math.max(raw, 0);
+  const attemptWeights = [100, 75, 50, 25, 0];
+  return attemptWeights[normalizedAttempts - 1] ?? 0;
+}
+
+export function calculateTimeScore(elapsedSeconds, timeLimitSeconds = 60) {
+  const boundedSeconds = Math.min(Math.max(elapsedSeconds, 0), timeLimitSeconds);
+  return Math.max(0, Math.round(100 - (boundedSeconds / timeLimitSeconds) * 100));
+}
+
+export function calculateQuestionScore(attempts, elapsedSeconds = 0) {
+  const attemptScore = calculateAttemptScore(attempts);
+  const timeScore = calculateTimeScore(elapsedSeconds);
+  return Math.max(0, Math.min(200, attemptScore + timeScore));
 }
