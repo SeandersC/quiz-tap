@@ -31,6 +31,31 @@ export function normalizeName(name) {
   return trimmed ? trimmed : 'Anonymous';
 }
 
+function formatLeaderboardDisplayName(name, submittedAt, category) {
+  const normalizedName = normalizeName(name);
+  if (!normalizedName || normalizedName === 'Anonymous') {
+    return normalizedName;
+  }
+
+  const baseName = normalizedName.replace(/\s\([^)]+\)$/, '');
+  const parsedDate = submittedAt ? new Date(submittedAt) : new Date();
+  if (Number.isNaN(parsedDate.getTime())) {
+    return baseName;
+  }
+
+  const formattedDate = new Intl.DateTimeFormat('en-US', {
+    month: 'numeric',
+    day: 'numeric',
+    year: category === 'allTime' ? '2-digit' : undefined
+  }).format(parsedDate);
+
+  if (category === 'allTime') {
+    return `${baseName} (${formattedDate})`;
+  }
+
+  return `${baseName} (${formattedDate})`;
+}
+
 function getDatePartsInTimeZone(date, timeZone = 'America/Chicago') {
   const parsedDate = date instanceof Date ? date : new Date(date);
   if (Number.isNaN(parsedDate.getTime())) {
@@ -122,7 +147,7 @@ function getEntriesForCategory(entries, category, referenceDate, timeZone = 'Ame
   return entries;
 }
 
-export function insertLeaderboardEntry(entries, entry, limit = 10) {
+export function insertLeaderboardEntry(entries, entry, limit = 10, category = 'daily') {
   const normalizedName = normalizeName(entry.name);
   if (!normalizedName || normalizedName === 'Anonymous') {
     return {
@@ -131,11 +156,12 @@ export function insertLeaderboardEntry(entries, entry, limit = 10) {
     };
   }
 
+  const submittedAt = entry.submittedAt || new Date().toISOString();
   const normalizedEntry = {
     ...entry,
-    name: normalizedName,
+    name: formatLeaderboardDisplayName(normalizedName, submittedAt, category),
     score: Number(entry.score) || 0,
-    submittedAt: entry.submittedAt || new Date().toISOString()
+    submittedAt
   };
 
   const nextEntries = [...entries, normalizedEntry]
@@ -161,7 +187,7 @@ export function addScoreEntry(category, entry, limit = 10, referenceDate = new D
 
   const filteredEntries = getEntriesForCategory(currentEntries, category, resolvedEntryDate, 'America/Chicago');
 
-  const result = insertLeaderboardEntry(filteredEntries, entry, limit);
+  const result = insertLeaderboardEntry(filteredEntries, entry, limit, category);
   const shouldPersist = result.inserted;
 
   if (!shouldPersist) {
@@ -180,11 +206,15 @@ export function addScoreEntry(category, entry, limit = 10, referenceDate = new D
 export function getLeaderboard(category, referenceDate = new Date()) {
   const store = readStore();
   const entries = Array.isArray(store[category]) ? store[category] : [];
+  const formattedEntries = entries.map((entry) => ({
+    ...entry,
+    name: formatLeaderboardDisplayName(entry.name, entry.submittedAt, category)
+  }));
 
   if (category !== 'weekly') {
-    return entries;
+    return formattedEntries;
   }
 
   const resolvedReferenceDate = referenceDate instanceof Date ? referenceDate : new Date(referenceDate);
-  return getEntriesForCategory(entries, category, resolvedReferenceDate, 'America/Chicago');
+  return getEntriesForCategory(formattedEntries, category, resolvedReferenceDate, 'America/Chicago');
 }

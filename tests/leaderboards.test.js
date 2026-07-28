@@ -50,7 +50,7 @@ test('insertLeaderboardEntry accepts the first score and keeps it in the list', 
   }, 3);
 
   assert.equal(inserted.inserted, true);
-  assert.equal(inserted.entries[0].name, 'Nova');
+  assert.equal(inserted.entries[0].name, 'Nova (7/27)');
 });
 
 test('insertLeaderboardEntry keeps the top entries and rejects lower scores', () => {
@@ -67,7 +67,7 @@ test('insertLeaderboardEntry keeps the top entries and rejects lower scores', ()
   }, 3);
 
   assert.equal(inserted.inserted, true);
-  assert.equal(inserted.entries[0].name, 'Mina');
+  assert.equal(inserted.entries[0].name, 'Mina (7/27)');
 
   const rejected = insertLeaderboardEntry(entries, {
     name: 'Kofi',
@@ -89,7 +89,28 @@ test('addScoreEntry persists entries in the requested leaderboard category', () 
   }, 3);
 
   assert.equal(result.inserted, true);
-  assert.equal(getLeaderboard('daily')[0].name, 'Mina');
+  assert.equal(getLeaderboard('daily')[0].name, 'Mina (7/27)');
+});
+
+test('addScoreEntry formats names differently by leaderboard category', () => {
+  resetLeaderboardStore();
+
+  const dailyResult = addScoreEntry('daily', {
+    name: 'Test User',
+    score: 820,
+    submittedAt: '2026-07-27T13:00:00.000Z'
+  }, 3);
+
+  const allTimeResult = addScoreEntry('allTime', {
+    name: 'Test User',
+    score: 900,
+    submittedAt: '2026-07-27T13:00:00.000Z'
+  }, 3);
+
+  assert.equal(dailyResult.inserted, true);
+  assert.equal(allTimeResult.inserted, true);
+  assert.equal(getLeaderboard('daily')[0].name, 'Test User (7/27)');
+  assert.equal(getLeaderboard('allTime')[0].name, 'Test User (7/27/26)');
 });
 
 test('addScoreEntry skips blank names so they never appear on the leaderboard', () => {
@@ -118,7 +139,7 @@ test('weekly leaderboard resets on Monday and keeps only entries from the curren
   }, 3, new Date(`${mondayThisWeek}T13:00:00.000Z`));
 
   assert.equal(firstWeekResult.inserted, true);
-  assert.equal(getLeaderboard('weekly', new Date(`${mondayThisWeek}T13:00:00.000Z`))[0].name, 'Mina');
+  assert.equal(getLeaderboard('weekly', new Date(`${mondayThisWeek}T13:00:00.000Z`))[0].name, 'Mina (7/27)');
 
   const nextWeekResult = addScoreEntry('weekly', {
     name: 'Kai',
@@ -127,7 +148,7 @@ test('weekly leaderboard resets on Monday and keeps only entries from the curren
   }, 3, new Date(`${nextMonday}T13:00:00.000Z`));
 
   assert.equal(nextWeekResult.inserted, true);
-  assert.equal(getLeaderboard('weekly', new Date(`${nextMonday}T13:00:00.000Z`))[0].name, 'Kai');
+  assert.equal(getLeaderboard('weekly', new Date(`${nextMonday}T13:00:00.000Z`))[0].name, 'Kai (8/3)');
   assert.equal(getLeaderboard('weekly', new Date(`${nextMonday}T13:00:00.000Z`)).length, 1);
 });
 
@@ -144,7 +165,7 @@ test('daily leaderboard keeps only entries from the current Chicago day', () => 
   }, 3, new Date(`${todayKey}T13:00:00.000Z`));
 
   assert.equal(firstDayResult.inserted, true);
-  assert.equal(getLeaderboard('daily', new Date(`${todayKey}T13:00:00.000Z`))[0].name, 'Mina');
+  assert.equal(getLeaderboard('daily', new Date(`${todayKey}T13:00:00.000Z`))[0].name, 'Mina (7/27)');
 
   const nextDayResult = addScoreEntry('daily', {
     name: 'Kai',
@@ -153,6 +174,6 @@ test('daily leaderboard keeps only entries from the current Chicago day', () => 
   }, 3, new Date(`${tomorrowKey}T13:00:00.000Z`));
 
   assert.equal(nextDayResult.inserted, true);
-  assert.equal(getLeaderboard('daily', new Date(`${tomorrowKey}T13:00:00.000Z`))[0].name, 'Kai');
+  assert.equal(getLeaderboard('daily', new Date(`${tomorrowKey}T13:00:00.000Z`))[0].name, 'Kai (7/28)');
   assert.equal(getLeaderboard('daily', new Date(`${tomorrowKey}T13:00:00.000Z`)).length, 1);
 });
