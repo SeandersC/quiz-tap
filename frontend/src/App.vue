@@ -1,5 +1,6 @@
 <script setup>
 import { computed, onMounted, ref } from 'vue';
+import { createSubmissionGuard } from './lib/submissionGuard.js';
 
 const apiBase = import.meta.env.VITE_API_BASE || (import.meta.env.DEV ? 'http://localhost:3001' : '');
 const QUESTION_TIME_LIMIT = 60;
@@ -18,6 +19,7 @@ const completed = ref(false);
 const challengeStarted = ref(false);
 const timerSeconds = ref(QUESTION_TIME_LIMIT);
 const showAnswerResult = ref(false);
+const isSubmittingAnswer = ref(false);
 const questionSetVersion = 3;
 const timeZone = 'America/Chicago';
 const today = new Intl.DateTimeFormat('en-CA', {
@@ -35,6 +37,7 @@ const displayDate = new Intl.DateTimeFormat('en-US', {
 const stateKey = 'quiztap-trivia-state';
 let timerHandle = null;
 let advanceDelayHandle = null;
+const answerSubmissionGuard = createSubmissionGuard();
 
 const currentQuestion = computed(() => dailyQuestions.value[currentIndex.value] ?? null);
 const progressPercent = computed(() => {
@@ -311,65 +314,83 @@ async function submitAnswer() {
     return;
   }
 
-  const attempts = (currentQuestion.value.attempts ?? 0) + 1;
-  const elapsedSeconds = QUESTION_TIME_LIMIT - timerSeconds.value;
-  const response = await fetch(`${apiBase}/api/submit-answer`, {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({
-      questionId: currentQuestion.value.id,
-      answer: selectedAnswer.value,
-      attempts,
-      elapsedSeconds
-    })
-  });
-
-  if (!response.ok) {
-    throw new Error(`Submit answer request failed with status ${response.status}`);
-  }
-
-  const result = await response.json();
-  currentQuestion.value.attempts = attempts;
-
-  if (!result.correct) {
-    currentQuestion.value.wrongAnswers = Array.from(
-      new Set([...(currentQuestion.value.wrongAnswers ?? []), selectedAnswer.value])
-    );
-    feedback.value = 'Incorrect — keep guessing until you get it right.';
-    selectedAnswer.value = '';
-    persistState();
+  if (!answerSubmissionGuard.tryAcquire()) {
+    feedback.value = 'Answer already being processed.';
     return;
   }
 
-  const earnedScore = result.score;
-  currentQuestion.value.score = earnedScore;
-  currentQuestion.value.solved = true;
-  currentQuestion.value.correctAnswer = result.correctAnswer;
-  totalScore.value += earnedScore;
-  showAnswerResult.value = true;
-  clearQuestionTimer();
-  feedback.value = `Correct! You earned ${earnedScore} points.`;
+  isSubmittingAnswer.value = true;
 
-  advanceDelayHandle = window.setTimeout(() => {
-    if (currentIndex.value < dailyQuestions.value.length - 1) {
-      currentIndex.value += 1;
-      selectedAnswer.value = '';
-      showAnswerResult.value = false;
-      feedback.value = `Question ${currentIndex.value + 1} of ${dailyQuestions.value.length}. Keep going.`;
-      resetQuestionTimer();
-    } else {
-      completed.value = true;
-      challengeStarted.value = false;
-      selectedAnswer.value = '';
-      showAnswerResult.value = false;
-      feedback.value = `Correct! Final score: ${totalScore.value} / 1000.`;
-      submitScoreToLeaderboard();
+  try {
+    const attempts = (currentQuestion.value.attempts ?? 0) + 1;
+    const elapsedSeconds = QUESTION_TIME_LIMIT - timerSeconds.value;
+    const response = await fetch(`${apiBase}/api/submit-answer`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        questionId: currentQuestion.value.id,
+        answer: selectedAnswer.value,
+        attempts,
+        elapsedSeconds
+      })
+    });
+
+    if (!response.ok) {
+      throw new Error(`Submit answer request failed with status ${response.status}`);
     }
 
-    persistState();
-  }, 1000);
+    const result = await response.json();
+    currentQuestion.value.attempts = attempts;
 
-  persistState();
+    if (!result.correct) {
+      currentQuestion.value.wrongAnswers = Array.from(
+        new Set([...(currentQuestion.value.wrongAnswers ?? []), selectedAnswer.value])
+      );
+      feedback.value = 'Incorrect — keep guessing until you get it right.';
+      selectedAnswer.value = '';
+      answerSubmissionGuard.release();
+      isSubmittingAnswer.value = false;
+      persistState();
+      return;
+    }
+
+    const earnedScore = result.score;
+    currentQuestion.value.score = earnedScore;
+    currentQuestion.value.solved = true;
+    currentQuestion.value.correctAnswer = result.correctAnswer;
+    totalScore.value += earnedScore;
+    showAnswerResult.value = true;
+    clearQuestionTimer();
+    feedback.value = `Correct! You earned ${earnedScore} points.`;
+
+    advanceDelayHandle = window.setTimeout(() => {
+      if (currentIndex.value < dailyQuestions.value.length - 1) {
+        currentIndex.value += 1;
+        selectedAnswer.value = '';
+        showAnswerResult.value = false;
+        feedback.value = `Question ${currentIndex.value + 1} of ${dailyQuestions.value.length}. Keep going.`;
+        resetQuestionTimer();
+      } else {
+        completed.value = true;
+        challengeStarted.value = false;
+        selectedAnswer.value = '';
+        showAnswerResult.value = false;
+        feedback.value = `Correct! Final score: ${totalScore.value} / 1000.`;
+        submitScoreToLeaderboard();
+      }
+
+      persistState();
+      answerSubmissionGuard.release();
+      isSubmittingAnswer.value = false;
+    }, 1000);
+
+    persistState();
+  } catch (error) {
+    console.error(error);
+    feedback.value = 'There was a problem submitting your answer. Please try again.';
+    answerSubmissionGuard.release();
+    isSubmittingAnswer.value = false;
+  }
 }
 
 async function copySummary() {
@@ -599,7 +620,7 @@ onMounted(() => {
           </label>
         </div>
 
-        <button class="submit" :disabled="!selectedAnswer" @click="submitAnswer">Submit answer</button>
+        <button class="submit" :disabled="!selectedAnswer || isSubmittingAnswer" @click="submitAnswer">Submit answer</button>
       </div>
 
       <div v-else class="status">

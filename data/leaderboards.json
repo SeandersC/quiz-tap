@@ -1,11 +1,5 @@
 {
-  "daily": [
-    {
-      "name": "Kai (7/28)",
-      "score": 900,
-      "submittedAt": "2026-07-28T13:00:00.000Z"
-    }
-  ],
-  "weekly": [],
+  "daily": [],
+  "weekly": [ ],
   "allTime": []
 }
