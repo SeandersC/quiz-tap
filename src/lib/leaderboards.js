@@ -46,12 +46,9 @@ function formatLeaderboardDisplayName(name, submittedAt, category) {
   const formattedDate = new Intl.DateTimeFormat('en-US', {
     month: 'numeric',
     day: 'numeric',
-    year: category === 'allTime' ? '2-digit' : undefined
+    year: category === 'allTime' ? '2-digit' : undefined,
+    timeZone: 'America/Chicago'
   }).format(parsedDate);
-
-  if (category === 'allTime') {
-    return `${baseName} (${formattedDate})`;
-  }
 
   return `${baseName} (${formattedDate})`;
 }
