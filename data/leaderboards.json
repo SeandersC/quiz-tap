@@ -1,23 +1,5 @@
 {
-  "daily": [
-    {
-      "name": "Sean",
-      "score": 988,
-      "submittedAt": "2026-07-28T02:43:20.055Z"
-    }
-  ],
-  "weekly": [
-    {
-      "name": "Sean",
-      "score": 988,
-      "submittedAt": "2026-07-28T02:43:20.055Z"
-    }
-  ],
-  "allTime": [
-    {
-      "name": "Sean",
-      "score": 988,
-      "submittedAt": "2026-07-28T02:43:20.055Z"
-    }
-  ]
+  "daily": [],
+  "weekly": [],
+  "allTime": []
 }
