@@ -84,5 +84,7 @@ export function calculateTimeScore(elapsedSeconds, timeLimitSeconds = 60) {
 export function calculateQuestionScore(attempts, elapsedSeconds = 0) {
   const attemptScore = calculateAttemptScore(attempts);
   const timeScore = calculateTimeScore(elapsedSeconds);
-  return Math.max(0, Math.min(200, attemptScore + timeScore));
+  const missedAttemptPenalty = Math.max(0, attempts - 1) * 5;
+  const adjustedTimeScore = Math.max(0, timeScore - missedAttemptPenalty);
+  return Math.max(0, Math.min(200, attemptScore + adjustedTimeScore));
 }

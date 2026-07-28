@@ -37,11 +37,11 @@ test('calculateTimeScore decays linearly by elapsed seconds', () => {
   assert.equal(calculateTimeScore(60), 0);
 });
 
-test('calculateQuestionScore combines answer worth and time worth', () => {
+test('calculateQuestionScore combines answer worth, time worth, and missed-attempt penalty', () => {
   assert.equal(calculateQuestionScore(1, 0), 200);
-  assert.equal(calculateQuestionScore(2, 30), 125);
+  assert.equal(calculateQuestionScore(2, 30), 120);
   assert.equal(calculateQuestionScore(3, 60), 50);
-  assert.equal(calculateQuestionScore(4, 0), 125);
+  assert.equal(calculateQuestionScore(4, 0), 110);
   assert.equal(calculateQuestionScore(5, 60), 0);
 });
 
