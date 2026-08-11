@@ -1,7 +1,6 @@
 import express from 'express';
 import cors from 'cors';
 import { buildDailyQuestionSet, calculateQuestionScore, getQuizDayForTimeZone } from './src/lib/quiz.js';
-import { addScoreEntry, getLeaderboard } from './src/lib/leaderboards.js';
 
 const app = express();
 const port = process.env.PORT || 3001;
@@ -53,33 +52,6 @@ app.post('/api/submit-answer', (req, res) => {
     score: calculateQuestionScore(attempts, elapsedSeconds),
     correctAnswer: question.correctAnswer
   });
-});
-
-app.post('/api/leaderboard', (req, res) => {
-  const { category = 'allTime', name, score, submittedAt } = req.body ?? {};
-
-  if (typeof score !== 'number' || Number.isNaN(score)) {
-    return res.status(400).json({ error: 'A numeric score is required.' });
-  }
-
-  const result = addScoreEntry(category, {
-    name,
-    score,
-    submittedAt: submittedAt || new Date().toISOString()
-  }, 10);
-
-  return res.json({ success: result.inserted, leaderboard: result.entries });
-});
-
-app.get('/api/leaderboard/:category', (req, res) => {
-  const category = req.params.category;
-  const allowedCategories = ['daily', 'weekly', 'allTime'];
-
-  if (!allowedCategories.includes(category)) {
-    return res.status(400).json({ error: 'Invalid leaderboard category.' });
-  }
-
-  return res.json({ category, entries: getLeaderboard(category) });
 });
 
 app.listen(port, () => {
