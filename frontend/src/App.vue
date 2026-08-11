@@ -9,11 +9,6 @@ const currentIndex = ref(0);
 const selectedAnswer = ref('');
 const feedback = ref('Press Begin Challenge to start the timed round.');
 const copyStatus = ref('');
-const leaderboardNotice = ref('');
-const playerName = ref('');
-const leaderboard = ref({ daily: [], weekly: [], allTime: [] });
-const showLeaderboardDrawer = ref(false);
-const leaderboardTab = ref('daily');
 const totalScore = ref(0);
 const completed = ref(false);
 const challengeStarted = ref(false);
@@ -71,18 +66,6 @@ const displaySummary = computed(() => {
   });
 });
 
-const leaderboardEntries = computed(() => {
-  if (leaderboardTab.value === 'weekly') {
-    return leaderboard.value.weekly ?? [];
-  }
-
-  if (leaderboardTab.value === 'allTime') {
-    return leaderboard.value.allTime ?? [];
-  }
-
-  return leaderboard.value.daily ?? [];
-});
-
 function isWrongAnswer(option) {
   return Boolean(
     currentQuestion.value &&
@@ -103,23 +86,6 @@ function clearAdvanceDelay() {
     window.clearTimeout(advanceDelayHandle);
     advanceDelayHandle = null;
   }
-}
-
-function normalizeLeaderboardNotice(value) {
-  return String(value ?? '').replace(/[.?!]+$/g, '').trim();
-}
-
-async function openLeaderboardPanel() {
-  showLeaderboardDrawer.value = true;
-  await loadLeaderboards();
-}
-
-function closeLeaderboardPanel() {
-  showLeaderboardDrawer.value = false;
-}
-
-function setLeaderboardTab(tab) {
-  leaderboardTab.value = tab;
 }
 
 function handleQuestionTimeout() {
@@ -189,8 +155,6 @@ function persistState() {
     showAnswerResult: showAnswerResult.value,
     completed: completed.value,
     totalScore: totalScore.value,
-    playerName: playerName.value,
-    leaderboardNotice: normalizeLeaderboardNotice(leaderboardNotice.value),
     questions: dailyQuestions.value.map((question) => ({
       id: question.id,
       attempts: question.attempts,
@@ -222,8 +186,6 @@ function restoreState(savedState) {
   showAnswerResult.value = savedState.showAnswerResult ?? false;
   completed.value = savedState.completed ?? false;
   totalScore.value = savedState.totalScore ?? 0;
-  playerName.value = savedState.playerName ?? '';
-  leaderboardNotice.value = normalizeLeaderboardNotice(savedState.leaderboardNotice ?? '');
 
   if (Array.isArray(savedState.questions)) {
     dailyQuestions.value = dailyQuestions.value.map((question) => {
@@ -298,7 +260,6 @@ async function beginChallenge() {
   currentIndex.value = 0;
   selectedAnswer.value = '';
   feedback.value = `Question 1 of ${dailyQuestions.value.length}. Pick the best answer before the timer expires.`;
-  leaderboardNotice.value = '';
   resetQuestionTimer();
   persistState();
 }
@@ -376,7 +337,6 @@ async function submitAnswer() {
         selectedAnswer.value = '';
         showAnswerResult.value = false;
         feedback.value = `Correct! Final score: ${totalScore.value} / 1000.`;
-        submitScoreToLeaderboard();
       }
 
       persistState();
@@ -399,105 +359,6 @@ async function copySummary() {
     copyStatus.value = 'Score copied to clipboard';
   } catch {
     copyStatus.value = 'Copy failed in this browser. Please try again.';
-  }
-}
-
-async function loadLeaderboards() {
-  try {
-    const [dailyResponse, weeklyResponse, allTimeResponse] = await Promise.all([
-      fetch(`${apiBase}/api/leaderboard/daily`),
-      fetch(`${apiBase}/api/leaderboard/weekly`),
-      fetch(`${apiBase}/api/leaderboard/allTime`)
-    ]);
-
-    if (!dailyResponse.ok || !weeklyResponse.ok || !allTimeResponse.ok) {
-      throw new Error('One or more leaderboard requests failed.');
-    }
-
-    const [daily, weekly, allTime] = await Promise.all([
-      dailyResponse.json(),
-      weeklyResponse.json(),
-      allTimeResponse.json()
-    ]);
-
-    leaderboard.value = {
-      daily: daily.entries ?? daily.leaderboard ?? [],
-      weekly: weekly.entries ?? weekly.leaderboard ?? [],
-      allTime: allTime.entries ?? allTime.leaderboard ?? []
-    };
-  } catch (error) {
-    console.error(error);
-  }
-}
-
-async function submitScoreToLeaderboard() {
-  if (!totalScore.value) {
-    return;
-  }
-
-  const normalizedName = (playerName.value || '').trim();
-  if (!normalizedName) {
-    return;
-  }
-
-  try {
-    const payload = {
-      name: normalizedName,
-      score: totalScore.value,
-      submittedAt: new Date().toISOString()
-    };
-
-    const [dailyResponse, weeklyResponse, allTimeResponse] = await Promise.all([
-      fetch(`${apiBase}/api/leaderboard`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ ...payload, category: 'daily' })
-      }),
-      fetch(`${apiBase}/api/leaderboard`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ ...payload, category: 'weekly' })
-      }),
-      fetch(`${apiBase}/api/leaderboard`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ ...payload, category: 'allTime' })
-      })
-    ]);
-
-    if (!dailyResponse.ok || !weeklyResponse.ok || !allTimeResponse.ok) {
-      throw new Error('One or more leaderboard save requests failed.');
-    }
-
-    const [dailyData, weeklyData, allTimeData] = await Promise.all([
-      dailyResponse.json(),
-      weeklyResponse.json(),
-      allTimeResponse.json()
-    ]);
-
-    leaderboard.value = {
-      daily: dailyData.entries ?? dailyData.leaderboard ?? [],
-      weekly: weeklyData.entries ?? weeklyData.leaderboard ?? [],
-      allTime: allTimeData.entries ?? allTimeData.leaderboard ?? []
-    };
-
-    const madeLeaderboard = [dailyData, weeklyData, allTimeData].some((data) => {
-      const entries = data.entries ?? data.leaderboard ?? [];
-      return entries.some((entry) => {
-        const sameName = (entry.name || '').trim().toLowerCase() === normalizedName.toLowerCase();
-        const sameScore = Number(entry.score) === Number(totalScore.value);
-        return sameName && sameScore;
-      });
-    });
-
-    leaderboardNotice.value = madeLeaderboard ? 'Your score made the leaderboard' : 'Score saved to the leaderboard';
-    copyStatus.value = '';
-    persistState();
-  } catch (error) {
-    console.error(error);
-    leaderboardNotice.value = 'Could not save the score right now.';
-    copyStatus.value = '';
-    persistState();
   }
 }
 
@@ -524,7 +385,6 @@ onMounted(() => {
     fetchDailyQuestions();
   }
 
-  loadLeaderboards();
 });
 
 </script>
@@ -539,10 +399,6 @@ onMounted(() => {
         <span>{{ displayDate }}</span>
         <span class="score-pill">Score: {{ totalScore }} / 1000</span>
       </div>
-      <button class="leaderboard-link" @click="openLeaderboardPanel" type="button">
-        <span>High scores</span>
-        <span class="leaderboard-arrow" aria-hidden="true">→</span>
-      </button>
 
       <div class="progress">
         <div class="progress-bar" :style="{ width: `${progressPercent}%` }"></div>
@@ -564,7 +420,7 @@ onMounted(() => {
 
         <div class="summary-box">
           <div class="summary-header">
-            <strong>Score summary: {{ playerName.trim() || 'Anonymous' }}</strong>
+            <strong>Score summary</strong>
             <span>{{ displayDate }}</span>
           </div>
           <div class="score-board">
@@ -572,22 +428,12 @@ onMounted(() => {
           </div>
           <p v-if="copyStatus" class="copy-status">{{ copyStatus }}</p>
           <button class="submit copy-button" @click="copySummary">Copy score</button>
-          <p v-if="leaderboardNotice" class="leaderboard-notice">
-            <button type="button" class="leaderboard-notice-link" @click="openLeaderboardPanel">
-              <span class="notice-badge" aria-hidden="true">🏆</span>
-              <span>{{ leaderboardNotice }}</span>
-              <span class="leaderboard-arrow" aria-hidden="true">→</span>
-            </button>
-          </p>
         </div>
 
       </div>
 
       <div v-else-if="!challengeStarted && !completed" class="status intro">
         <p class="intro-copy">You’ll get one trivia question at a time. Each question is worth 200 points, and both answer quality and speed affect your score.</p>
-        <label class="name-field">
-          <input v-model="playerName" maxlength="20" placeholder="Name (Optional)" />
-        </label>
         <button class="submit" @click="beginChallenge">Begin Challenge</button>
       </div>
 
@@ -628,41 +474,6 @@ onMounted(() => {
       </div>
     </section>
 
-    <div v-if="showLeaderboardDrawer" class="leaderboard-overlay" @click.self="closeLeaderboardPanel">
-      <aside class="leaderboard-drawer" role="dialog" aria-label="High scores">
-        <div class="drawer-header">
-          <div>
-            <p class="drawer-eyebrow">Leaderboard</p>
-            <h3>High scores</h3>
-          </div>
-          <button class="drawer-close" @click="closeLeaderboardPanel">×</button>
-        </div>
-
-        <div class="drawer-tabs">
-          <button :class="{ active: leaderboardTab === 'daily' }" @click="setLeaderboardTab('daily')">Daily</button>
-          <button :class="{ active: leaderboardTab === 'weekly' }" @click="setLeaderboardTab('weekly')">Weekly</button>
-          <button :class="{ active: leaderboardTab === 'allTime' }" @click="setLeaderboardTab('allTime')">All time</button>
-        </div>
-
-        <div v-if="!leaderboardEntries.length" class="drawer-empty">
-          No results
-        </div>
-        <ol v-else class="drawer-list">
-          <li v-for="(entry, index) in leaderboardEntries" :key="`${entry.name}-${entry.score}-${entry.submittedAt}`">
-            <div class="drawer-entry-main">
-              <span class="drawer-rank">{{ index + 1 }}.</span>
-              <span class="drawer-name">
-                <span v-if="index === 0" class="medal">🥇</span>
-                <span v-else-if="index === 1" class="medal">🥈</span>
-                <span v-else-if="index === 2" class="medal">🥉</span>
-                {{ entry.name || 'Anonymous' }}
-              </span>
-            </div>
-            <strong>{{ entry.score }}</strong>
-          </li>
-        </ol>
-      </aside>
-    </div>
   </main>
 </template>
 
@@ -716,29 +527,6 @@ h1 {
 .score-pill {
   font-weight: 700;
   color: #1d4ed8;
-}
-
-.leaderboard-link {
-  position: absolute;
-  top: 18px;
-  right: 24px;
-  border: none;
-  background: transparent;
-  color: #2563eb;
-  font-weight: 700;
-  cursor: pointer;
-  padding: 0;
-  display: inline-flex;
-  align-items: center;
-  gap: 4px;
-}
-
-.leaderboard-arrow {
-  transition: transform 0.2s ease;
-}
-
-.leaderboard-link:hover .leaderboard-arrow {
-  transform: translateX(2px);
 }
 
 .progress {
@@ -953,196 +741,4 @@ h2 {
   font-weight: 700;
 }
 
-.leaderboard-notice {
-  margin: 8px 0 0;
-  text-align: center;
-}
-
-.leaderboard-notice-link {
-  border: 1px solid #bfdbfe;
-  background: linear-gradient(135deg, #eff6ff, #fef3c7);
-  padding: 8px 12px;
-  color: #1d4ed8;
-  font-weight: 700;
-  cursor: pointer;
-  display: inline-flex;
-  align-items: center;
-  gap: 6px;
-  border-radius: 999px;
-  box-shadow: 0 6px 14px rgba(37, 99, 235, 0.1);
-}
-
-.notice-badge {
-  font-size: 1rem;
-  line-height: 1;
-}
-
-.name-field {
-  display: grid;
-  gap: 6px;
-  margin-top: 12px;
-  text-align: left;
-  color: #475569;
-  font-weight: 700;
-  font-size: 0.92rem;
-}
-
-.name-field input {
-  border: 1px solid #bfdbfe;
-  border-radius: 12px;
-  padding: 10px 12px;
-  font-size: 0.95rem;
-}
-
-.leaderboard-overlay {
-  position: fixed;
-  inset: 0;
-  background: rgba(15, 23, 42, 0.32);
-  display: flex;
-  justify-content: flex-end;
-  z-index: 50;
-  animation: fadeInOverlay 180ms ease-out forwards;
-}
-
-.leaderboard-drawer {
-  width: min(360px, 100%);
-  height: 100%;
-  background: white;
-  padding: 20px;
-  box-shadow: -12px 0 30px rgba(15, 23, 42, 0.16);
-  display: flex;
-  flex-direction: column;
-  gap: 16px;
-  transform: translateX(0);
-  animation: slideInDrawer 220ms ease-out forwards;
-}
-
-@keyframes fadeInOverlay {
-  from {
-    opacity: 0;
-  }
-  to {
-    opacity: 1;
-  }
-}
-
-@keyframes slideInDrawer {
-  from {
-    transform: translateX(100%);
-  }
-  to {
-    transform: translateX(0);
-  }
-}
-
-.drawer-header {
-  display: flex;
-  justify-content: space-between;
-  align-items: start;
-  gap: 12px;
-}
-
-.drawer-eyebrow {
-  margin: 0 0 4px;
-  text-transform: uppercase;
-  letter-spacing: 0.12em;
-  font-size: 0.72rem;
-  color: #2563eb;
-}
-
-.drawer-header h3 {
-  margin: 0;
-  font-size: 1.15rem;
-}
-
-.drawer-close {
-  border: none;
-  background: #eff6ff;
-  color: #1d4ed8;
-  border-radius: 999px;
-  width: 34px;
-  height: 34px;
-  font-size: 1.1rem;
-  cursor: pointer;
-}
-
-.drawer-tabs {
-  display: flex;
-  gap: 8px;
-  flex-wrap: wrap;
-}
-
-.drawer-tabs button {
-  border: 1px solid #bfdbfe;
-  background: white;
-  color: #1d4ed8;
-  border-radius: 999px;
-  padding: 7px 10px;
-  font-size: 0.9rem;
-  font-weight: 700;
-  cursor: pointer;
-}
-
-.drawer-tabs button.active {
-  background: #2563eb;
-  color: white;
-  border-color: #2563eb;
-}
-
-.drawer-empty {
-  padding: 18px 12px;
-  border-radius: 12px;
-  background: #f8fbff;
-  border: 1px dashed #bfdbfe;
-  color: #64748b;
-  text-align: center;
-  font-weight: 700;
-}
-
-.drawer-list {
-  list-style: none;
-  padding: 0;
-  margin: 0;
-  display: grid;
-  gap: 10px;
-  overflow-y: auto;
-}
-
-.drawer-list li {
-  display: flex;
-  justify-content: space-between;
-  align-items: center;
-  gap: 10px;
-  padding: 10px 12px;
-  border-radius: 12px;
-  background: #f8fbff;
-  border: 1px solid #dbeafe;
-}
-
-.drawer-entry-main {
-  display: flex;
-  align-items: center;
-  gap: 8px;
-  min-width: 0;
-}
-
-.drawer-rank {
-  color: #64748b;
-  font-weight: 700;
-  min-width: 2ch;
-}
-
-.drawer-name {
-  display: flex;
-  align-items: center;
-  gap: 6px;
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-}
-
-.medal {
-  font-size: 1rem;
-  line-height: 1;
-}
 </style>
